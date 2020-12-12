@@ -13,12 +13,12 @@ def generate_sockets(num_sockets: int):
     return sockets
 
 
-def generate_readings(start_date: datetime, end_date: datetime, interval: int, client: str, sockets: int, source: str, plain: bool):
+def generate_readings(start_date: datetime, end_date: datetime, interval: int, client: str, sockets: int, source: str, bucket: str, plain: bool):
     count= 0
     dates = pd.date_range(start_date, end_date, freq=f'{interval}min')
     
     #number_of_cpu = joblib.cpu_count()
-    delayed_funcs = [delayed(gen_readings_for_date)(date, sockets, client, source, plain) for date in dates]
+    delayed_funcs = [delayed(gen_readings_for_date)(date, sockets, client, source, bucket, plain) for date in dates]
     parallel_pool = Parallel(n_jobs=4)
     parallel_pool(delayed_funcs)
 
@@ -28,7 +28,7 @@ def generate_readings(start_date: datetime, end_date: datetime, interval: int, c
     #print(f"{count} readings generated")
 
 
-def gen_readings_for_date(date: datetime, sockets: int, client: str, source: str, plain: bool):
+def gen_readings_for_date(date: datetime, sockets: int, client: str, source: str, bucket: str, plain: bool):
     variables = ["Var-01", "Var-02", "Var-03", "Var-04"]
     versions = ["Original", "Usage"]
     sockets = [f"SOCKET-{x}" for x in range(sockets)]
@@ -36,17 +36,17 @@ def gen_readings_for_date(date: datetime, sockets: int, client: str, source: str
         for variable in variables:
             for version in versions:
                 reading = get_reading(client, socket, variable, date, source, version)
-                put_reading(reading, plain)
+                put_reading(reading, bucket, plain)
 
 
-def put_reading(reading: Reading, plain: bool):
+def put_reading(reading: Reading, bucket: str, plain: bool):
     client = boto3.client('s3')
     json_reading = json.dumps(reading, cls=ReadingEncoder)
     date = reading.utc_datetime[0:10]
     key = f"{reading.id}"
     if not plain:
         key = f"dt={date}/src={reading.source}/med={reading.id_socket}/var={reading.channel}/{reading.datetime}"
-    client.put_object(Bucket='pad-datalake-part', Body=json_reading, Key=key)
+    client.put_object(Bucket=bucket, Body=json_reading, Key=key)
     print(f"File {key} putted to s3")
 
 
@@ -83,9 +83,10 @@ def get_reading(client: str, socket: str, variable: str, date: datetime, source:
     return reading
 
 start = datetime.now()
-generate_readings(start_date= datetime(2020,11,1,0,0,0,0), 
-                  end_date= datetime(2020,11,15,23,59,59,9999), 
-                  interval= 15, client= "BPA", sockets= 4, source= "Primeread", plain= False)
+generate_readings(start_date= datetime(2020,11,6,0,0,0,0), 
+                  end_date= datetime(2020,11,30,23,59,59,9999), 
+                  interval= 15, client= "BPA", sockets= 4, source= "Primeread", 
+                  bucket= "pad-datalake", plain= True)
 stop = datetime.now()
 print(f"Elapsed time: {start - stop}")
 #print(reading)
